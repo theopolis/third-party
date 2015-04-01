@@ -24,7 +24,11 @@ endif
 
 AM_YFLAGS=-d
 
-AM_CFLAGS=-O3 -Wall -Wno-deprecated-declarations -std=gnu99 -I./include
+AM_CFLAGS=-O3 -Wall -Wno-deprecated-declarations -std=gnu99 -I$(srcdir)/include
+
+if GCC
+AM_CFLAGS+=-fvisibility=hidden
+endif
 
 ACLOCAL_AMFLAGS=-I m4
 
@@ -50,11 +54,12 @@ yarainclude_HEADERS = \
   include/yara/modules.h \
   include/yara/object.h \
   include/yara/strutils.h \
+  include/yara/stream.h \
   include/yara/libyara.h
 
 lib_LTLIBRARIES = libyara.la
 
-libyara_la_LDFLAGS = -export-symbols libyara.sym -version-number 3:3:0
+libyara_la_LDFLAGS = -version-number 3:3:0
 
 libyara_la_SOURCES = \
   $(MODULES) \
@@ -98,6 +103,8 @@ libyara_la_SOURCES = \
   sizedstr.h \
   strutils.c \
   strutils.h \
+  stream.c \
+  stream.h \
   utils.h
 
 pkgconfigdir = $(libdir)/pkgconfig

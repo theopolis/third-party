@@ -40,6 +40,7 @@ stamp-h1
 /missing
 /ylwrap
 /m4
+/compile
 
 # Project specific files
 /yara

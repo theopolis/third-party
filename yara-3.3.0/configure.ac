@@ -20,6 +20,19 @@ AC_PROG_YACC
 LT_INIT
 AC_PROG_LIBTOOL
 
+AC_CANONICAL_HOST
+
+case $host_alias in
+     i?86-*-mingw*) CFLAGS="$CFLAGS -D__MINGW_USE_VC2005_COMPAT" ;;
+esac
+
+
+AC_ARG_ENABLE([profiling],
+  [AS_HELP_STRING([--enable-profiling], [enable profiling support])],
+  [if test x$enableval = xyes; then
+    CFLAGS="$CFLAGS -DPROFILING_ENABLED"
+  fi])
+
 AC_ARG_ENABLE([dmalloc],
   [AS_HELP_STRING([--enable-dmalloc],
     [enable dmalloc to debug heap-related issues])],
@@ -89,6 +102,7 @@ AC_CHECK_FUNCS([strlcpy strlcat memmem timegm])
 AM_CONDITIONAL([CUCKOO], [test x$build_cuckoo_module = xtrue])
 AM_CONDITIONAL([MAGIC], [test x$build_magic_module = xtrue])
 AM_CONDITIONAL([HASH], [test x$build_hash_module = xtrue])
+AM_CONDITIONAL([GCC], [test "x$GCC" = xyes])
 
 AC_CONFIG_FILES([Makefile])
 AC_CONFIG_FILES([libyara/Makefile])

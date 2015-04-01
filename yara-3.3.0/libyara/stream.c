@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2007-2013. The YARA Authors. All Rights Reserved.
+Copyright (c) 2015. The YARA Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,16 +14,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#ifndef YR_YARA_H
-#define YR_YARA_H
+#include <stddef.h>
+#include <yara/stream.h>
 
-#include "yara/utils.h"
-#include "yara/filemap.h"
-#include "yara/compiler.h"
-#include "yara/modules.h"
-#include "yara/object.h"
-#include "yara/libyara.h"
-#include "yara/error.h"
-#include "yara/stream.h"
 
-#endif
+size_t yr_stream_read(
+    void* ptr,
+    size_t size,
+    size_t count,
+    YR_STREAM* stream)
+{
+  if (stream->read == NULL)
+  	return 0;
+
+  return stream->read(ptr, size, count, stream->user_data);
+}
+
+
+size_t yr_stream_write(
+    const void* ptr,
+    size_t size,
+    size_t count,
+    YR_STREAM* stream)
+{
+  if (stream->write == NULL)
+  	return 0;
+
+  return stream->write(ptr, size, count, stream->user_data);
+}

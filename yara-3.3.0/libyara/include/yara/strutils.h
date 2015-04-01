@@ -59,7 +59,7 @@ void* memmem(
 #endif
 
 
-int strlen_w(
+int strnlen_w(
     const char* w_str);
 
 

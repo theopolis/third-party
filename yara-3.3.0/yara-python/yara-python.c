@@ -47,7 +47,7 @@ typedef int Py_ssize_t;
 #else
 #define PY_STRING(x) PyString_FromString(x)
 #define PY_STRING_TO_C(x) PyString_AsString(x)
-#define PY_STRING_CHECK(x) PyString_Check(x)
+#define PY_STRING_CHECK(x) (PyString_Check(x) || PyUnicode_Check(x))
 #endif
 
 /* Module globals */
@@ -63,7 +63,6 @@ This module allows you to apply YARA rules to files or strings.\n\
 \n\
 For complete documentation please visit:\n\
 https://plusvic.github.io/yara\n"
-
 
 
 // Match object
@@ -597,6 +596,74 @@ int yara_callback(
 }
 
 
+/* YR_STREAM read method for "file-like objects" */
+
+static size_t flo_read(
+    void* ptr,
+    size_t size,
+    size_t count,
+    void* user_data)
+{
+  for (int i = 0; i < count; i++)
+  {
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+
+    PyObject* bytes = PyObject_CallMethod(
+        (PyObject*) user_data, "read", "n", (Py_ssize_t) size);
+
+    PyGILState_Release(gil_state);
+
+    if (bytes != NULL)
+    {
+      Py_ssize_t len;
+      char* buffer;
+
+      int result = PyBytes_AsStringAndSize(bytes, &buffer, &len);
+
+      Py_DECREF(bytes);
+
+      if (result == -1 || len < size)
+        return i;
+
+      memcpy(ptr + i * size, buffer, size);
+    }
+    else
+    {
+      return i;
+    }
+  }
+
+  return count;
+}
+
+
+/* YR_STREAM write method for "file-like objects" */
+
+static size_t flo_write(
+    const void* ptr,
+    size_t size,
+    size_t count,
+    void* user_data)
+{
+  for (int i = 0; i < count; i++)
+  {
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+
+    PyObject* result = PyObject_CallMethod(
+        (PyObject*) user_data, "write", "s#", ptr + i * size, size);
+
+    PyGILState_Release(gil_state);
+
+    if (result == NULL)
+      return i;
+
+    Py_DECREF(result);
+  }
+
+  return count;
+}
+
+
 int process_compile_externals(
     PyObject* externals,
     YR_COMPILER* compiler)
@@ -929,6 +996,7 @@ static PyObject * Rules_next(PyObject *self)
   rule = PyObject_NEW(Rule, &Rule_Type);
   tag_list = PyList_New(0);
   meta_list = PyDict_New();
+
   if (rule != NULL && tag_list != NULL && meta_list != NULL)
   {
     yr_rule_tags_foreach(rules->iter_current_rule, tag)
@@ -1123,9 +1191,27 @@ static PyObject * Rules_match(
       Py_DECREF(callback_data.matches);
 
       if (error == ERROR_CALLBACK_ERROR)
+      {
         return NULL;
+      }
       else
-        return handle_error(error, filepath);
+      {
+        handle_error(error, filepath);
+
+#ifdef PROFILING_ENABLED
+        PyObject* exception = PyErr_Occurred();
+
+        if (exception != NULL && error == ERROR_SCAN_TIMEOUT)
+        {
+          PyObject_SetAttrString(
+              exception,
+              "profiling_info",
+              Rules_profiling_info(self, NULL));
+        }
+#endif
+
+        return NULL;
+      }
     }
   }
 
@@ -1137,27 +1223,51 @@ static PyObject * Rules_save(
     PyObject *self,
     PyObject *args)
 {
-  char* filepath;
   int error;
+
+  PyObject* param;
   Rules* rules = (Rules*) self;
 
-  if (PyArg_ParseTuple(args, "s", &filepath))
+  if (!PyArg_UnpackTuple(args, "save", 1, 1, &param))
   {
+    return PyErr_Format(
+        PyExc_TypeError,
+          "save() takes 1 argument");
+  }
+
+  if (PY_STRING_CHECK(param))
+  {
+    char* filepath = PY_STRING_TO_C(param);
+
     Py_BEGIN_ALLOW_THREADS
     error = yr_rules_save(rules->rules, filepath);
     Py_END_ALLOW_THREADS
 
     if (error != ERROR_SUCCESS)
       return handle_error(error, filepath);
+  }
+  else if (PyObject_HasAttrString(param, "write"))
+  {
+    YR_STREAM stream = {
+      .user_data = param,
+      .write = flo_write
+    };
 
-    Py_RETURN_NONE;
+    Py_BEGIN_ALLOW_THREADS;
+    error = yr_rules_save_stream(rules->rules, &stream);
+    Py_END_ALLOW_THREADS;
+
+    if (error != ERROR_SUCCESS)
+      return handle_error(error, "<file-like-object>");
   }
   else
   {
     return PyErr_Format(
-        PyExc_TypeError,
-          "save() takes 1 argument");
+      PyExc_TypeError,
+      "load() expects either a file path or a file-like object");
   }
+
+  Py_RETURN_NONE;
 }
 
 
@@ -1544,78 +1654,95 @@ static PyObject * yara_load(
     PyObject *self,
     PyObject *args)
 {
-  YR_EXTERNAL_VARIABLE* external;
+  Rules* rules = PyObject_NEW(Rules, &Rules_Type);
+  PyObject* param;
 
-  int error;
-  char* filepath;
+  if (rules == NULL)
+    return PyErr_NoMemory();
 
-  Rules* rules;
-
-  if (PyArg_ParseTuple(args, "s", &filepath))
-  {
-    rules = PyObject_NEW(Rules, &Rules_Type);
-
-    Py_BEGIN_ALLOW_THREADS
-
-    if (rules != NULL)
-      error = yr_rules_load(filepath, &rules->rules);
-    else
-      error = ERROR_INSUFICIENT_MEMORY;
-
-    Py_END_ALLOW_THREADS
-
-    if (error != ERROR_SUCCESS)
-      return handle_error(error, filepath);
-
-    external = rules->rules->externals_list_head;
-    rules->iter_current_rule = rules->rules->rules_list_head;
-
-    if (!EXTERNAL_VARIABLE_IS_NULL(external))
-      rules->externals = PyDict_New();
-    else
-      rules->externals = NULL;
-
-    while (!EXTERNAL_VARIABLE_IS_NULL(external))
-    {
-      switch(external->type)
-      {
-        case EXTERNAL_VARIABLE_TYPE_BOOLEAN:
-          PyDict_SetItemString(
-              rules->externals,
-              external->identifier,
-              PyBool_FromLong((long) external->value.i));
-          break;
-        case EXTERNAL_VARIABLE_TYPE_INTEGER:
-          PyDict_SetItemString(
-              rules->externals,
-              external->identifier,
-              PyLong_FromLong((long) external->value.i));
-          break;
-        case EXTERNAL_VARIABLE_TYPE_FLOAT:
-          PyDict_SetItemString(
-              rules->externals,
-              external->identifier,
-              PyFloat_FromDouble(external->value.f));
-          break;
-        case EXTERNAL_VARIABLE_TYPE_STRING:
-          PyDict_SetItemString(
-              rules->externals,
-              external->identifier,
-              PY_STRING(external->value.s));
-          break;
-      }
-
-      external++;
-    }
-
-    return (PyObject*) rules;
-  }
-  else
+  if (!PyArg_UnpackTuple(args, "load", 1, 1, &param))
   {
     return PyErr_Format(
         PyExc_TypeError,
           "load() takes 1 argument");
   }
+
+  int error;
+
+  if (PY_STRING_CHECK(param))
+  {
+    char* filepath = PY_STRING_TO_C(param);
+
+    Py_BEGIN_ALLOW_THREADS;
+    error = yr_rules_load(filepath, &rules->rules);
+    Py_END_ALLOW_THREADS;
+
+    if (error != ERROR_SUCCESS)
+      return handle_error(error, filepath);
+  }
+  else if (PyObject_HasAttrString(param, "read"))
+  {
+    YR_STREAM stream = {
+      .user_data = param,
+      .read = flo_read
+    };
+
+    Py_BEGIN_ALLOW_THREADS;
+    error = yr_rules_load_stream(&stream, &rules->rules);
+    Py_END_ALLOW_THREADS;
+
+    if (error != ERROR_SUCCESS)
+      return handle_error(error, "<file-like-object>");
+  }
+  else
+  {
+    return PyErr_Format(
+      PyExc_TypeError,
+      "load() expects either a file path or a file-like object");
+  }
+
+  YR_EXTERNAL_VARIABLE* external = rules->rules->externals_list_head;
+  rules->iter_current_rule = rules->rules->rules_list_head;
+
+  if (!EXTERNAL_VARIABLE_IS_NULL(external))
+    rules->externals = PyDict_New();
+  else
+    rules->externals = NULL;
+
+  while (!EXTERNAL_VARIABLE_IS_NULL(external))
+  {
+    switch(external->type)
+    {
+      case EXTERNAL_VARIABLE_TYPE_BOOLEAN:
+        PyDict_SetItemString(
+            rules->externals,
+            external->identifier,
+            PyBool_FromLong((long) external->value.i));
+        break;
+      case EXTERNAL_VARIABLE_TYPE_INTEGER:
+        PyDict_SetItemString(
+            rules->externals,
+            external->identifier,
+            PyLong_FromLong((long) external->value.i));
+        break;
+      case EXTERNAL_VARIABLE_TYPE_FLOAT:
+        PyDict_SetItemString(
+            rules->externals,
+            external->identifier,
+            PyFloat_FromDouble(external->value.f));
+        break;
+      case EXTERNAL_VARIABLE_TYPE_STRING:
+        PyDict_SetItemString(
+            rules->externals,
+            external->identifier,
+            PY_STRING(external->value.s));
+        break;
+    }
+
+    external++;
+  }
+
+  return (PyObject*) rules;
 }
 
 

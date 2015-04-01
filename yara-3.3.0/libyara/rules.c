@@ -594,30 +594,16 @@ YR_API int yr_rules_scan_proc(
 }
 
 
-YR_API int yr_rules_save(
-    YR_RULES* rules,
-    const char* filename)
+YR_API int yr_rules_load_stream(
+    YR_STREAM* stream,
+    YR_RULES** rules)
 {
-  assert(rules->tidx_mask == 0);
-  return yr_arena_save(rules->arena, filename);
-}
-
-
-YR_API int yr_rules_load(
-  const char* filename,
-  YR_RULES** rules)
-{
-  YR_RULES* new_rules;
-  YARA_RULES_FILE_HEADER* header;
-
-  int result;
-
-  new_rules = (YR_RULES*) yr_malloc(sizeof(YR_RULES));
+  YR_RULES* new_rules = (YR_RULES*) yr_malloc(sizeof(YR_RULES));
 
   if (new_rules == NULL)
     return ERROR_INSUFICIENT_MEMORY;
 
-  result = yr_arena_load(filename, &new_rules->arena);
+  int result = yr_arena_load_stream(stream, &new_rules->arena);
 
   if (result != ERROR_SUCCESS)
   {
@@ -625,7 +611,9 @@ YR_API int yr_rules_load(
     return result;
   }
 
-  header = (YARA_RULES_FILE_HEADER*) yr_arena_base_address(new_rules->arena);
+  YARA_RULES_FILE_HEADER* header = (YARA_RULES_FILE_HEADER*)
+      yr_arena_base_address(new_rules->arena);
+
   new_rules->automaton = header->automaton;
   new_rules->code_start = header->code_start;
   new_rules->externals_list_head = header->externals_list_head;
@@ -647,6 +635,57 @@ YR_API int yr_rules_load(
   *rules = new_rules;
 
   return ERROR_SUCCESS;
+}
+
+
+YR_API int yr_rules_load(
+    const char* filename,
+    YR_RULES** rules)
+{
+  FILE* fh = fopen(filename, "rb");
+
+  if (fh == NULL)
+    return ERROR_COULD_NOT_OPEN_FILE;
+
+  YR_STREAM stream = {
+    .user_data = fh,
+    .read = (YR_STREAM_READ_FUNC) fread
+  };
+
+  int result = yr_rules_load_stream(&stream, rules);
+
+  fclose(fh);
+  return result;
+}
+
+
+YR_API int yr_rules_save_stream(
+    YR_RULES* rules,
+    YR_STREAM* stream)
+{
+  assert(rules->tidx_mask == 0);
+  return yr_arena_save_stream(rules->arena, stream);
+}
+
+
+YR_API int yr_rules_save(
+    YR_RULES* rules,
+    const char* filename)
+{
+  FILE* fh = fopen(filename, "wb");
+
+  if (fh == NULL)
+    return ERROR_COULD_NOT_OPEN_FILE;
+
+  YR_STREAM stream = {
+    .user_data = fh,
+    .write = (YR_STREAM_WRITE_FUNC) fwrite,
+  };
+
+  int result = yr_rules_save_stream(rules, &stream);
+
+  fclose(fh);
+  return result;
 }
 
 
