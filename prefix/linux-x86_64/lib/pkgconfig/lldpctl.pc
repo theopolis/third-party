@@ -1,0 +1,6 @@
+Name: lldpctl
+Description: Library to interface with lldpd, a 802.1AB daemon
+Version: 0.9.6
+URL: http://vincentbernat.github.io/lldpd/
+Libs: -L/vagrant/third-party/prefix/linux-x86_64/lib -llldpctl
+Cflags: -I/vagrant/third-party/prefix/linux-x86_64/include

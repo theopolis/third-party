@@ -1,0 +1,10 @@
+prefix=/home/teddy/git/osql/third-party/prefix/linux-x86_64
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: libaudit
+Description: Libraries needed for apps that use the kernel audit framework
+Version: 2.4.2
+Libs: -L${libdir} -laudit
+Cflags: -I${includedir}

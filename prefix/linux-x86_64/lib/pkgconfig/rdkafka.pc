@@ -1,0 +1,10 @@
+prefix=/vagrant/third-party/prefix/linux-x86_64
+libdir=/vagrant/third-party/prefix/linux-x86_64/lib
+includedir=/vagrant/third-party/prefix/linux-x86_64/include
+
+Name: librdkafka
+Description: The Apache Kafka C/C++ library
+Version: 1.0.1
+Cflags: -I${includedir}
+Libs: -L${libdir} -lrdkafka
+Libs.private: -lm -Wl,-Bstatic -lssl -Wl,-Bdynamic -Wl,-Bstatic -lcrypto -Wl,-Bdynamic -Wl,-Bstatic -lz -Wl,-Bdynamic -ldl -lpthread -lrt -lcrypto

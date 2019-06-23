@@ -1,0 +1,12 @@
+prefix=/vagrant/third-party/prefix/linux-x86_64
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: augeas
+Version: 1.12.0
+Description: Augeas configuration editing library
+Requires.private: libxml-2.0 
+Libs: -L${libdir} -laugeas 
+Libs.private: -lfa
+Cflags: -I${includedir}

@@ -1,0 +1,8 @@
+libdir=/vagrant/third-party/prefix/linux-x86_64/lib
+includedir=/vagrant/third-party/prefix/linux-x86_64/include
+
+Name: libelf++
+Description: C++11 ELF library
+Version: 
+Libs: -L${libdir} -lelf++
+Cflags: -I${includedir}
