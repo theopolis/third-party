@@ -13,12 +13,6 @@
 *.dylib
 *.dll
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
 # Executables
 *.exe
 *.out
@@ -58,3 +52,14 @@ doxygen/latex
 *~
 \#*\#
 *.swp
+
+# third-party submodule prefix
+# these are pre-built dependencies
+prefix/linux-x86_64/*
+prefix/linux-x86_64/bin
+prefix/linux-x86_64/share
+!prefix/linux-x86_64/lib/
+prefix/linux-x86_64/lib/*
+!prefix/linux-x86_64/lib/*.a
+!prefix/linux-x86_64/lib/pkgconfig
+!prefix/linux-x86_64/include
