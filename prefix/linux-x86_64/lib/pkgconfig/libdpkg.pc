@@ -7,5 +7,5 @@ Name: libdpkg
 Description: Debian package management system library
 Version: 1.19.0.5
 Libs: -L${libdir} -ldpkg
-Libs.private:  -lz -llzma -lbz2
+Libs.private:  -lz  
 Cflags: -I${includedir}

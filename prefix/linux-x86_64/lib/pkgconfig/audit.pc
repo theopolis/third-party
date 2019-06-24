@@ -1,4 +1,4 @@
-prefix=/home/teddy/git/osql/third-party/prefix/linux-x86_64
+prefix=/vagrant/third-party/prefix/linux-x86_64
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include
